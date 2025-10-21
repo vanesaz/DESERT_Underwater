@@ -116,14 +116,14 @@ load libuwmll.so
 load libuwstaticrouting.so
 load libuwudp.so
 load libuwapplication.so
-load libpackeruwapplication.so
+load libuwapplication.so
 load libuwaloha.so
 load libuwcsmaaloha.so
 load libuwal.so
-load libpackeruwip.so
+load libuwip.so
 load libpackercommon.so
 load libpackermac.so
-load libpackeruwudp.so
+load libuwudp.so
 load libuwphy_clmsgs.so
 load libuwconnector.so
 load libuwmodem.so

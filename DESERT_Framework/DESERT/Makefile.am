@@ -94,6 +94,7 @@ SUBDIRS = m4 \
     interference/uwinterferenceofdm \
     propagation/uwoptical_propagation \
     propagation/uwem_propagation \
+    propagation/uwmi_propagation \
     channel/uwoptical_channel \
     channel/uwem_channel \
     statistics/uwstats_utilities \
