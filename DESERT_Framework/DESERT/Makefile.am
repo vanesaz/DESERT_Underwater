@@ -84,6 +84,7 @@ SUBDIRS = m4 \
     physical/uw-al/packer_mac \
     physical/uwphy_clmsgs \
     physical/uwem_phy \
+    physical/uwmi_phy \
     physical/uwem_antenna \
     utility/msg-display \
     mobility/uwdriftposition \
