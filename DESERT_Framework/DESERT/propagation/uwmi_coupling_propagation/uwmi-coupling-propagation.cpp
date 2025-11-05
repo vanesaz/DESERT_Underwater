@@ -133,8 +133,7 @@ double UwMiCouplingPropagation::getGain(Packet* p)
     double G_total = G_coupling * L_medium;
     if (G_total < 1e-30)
         G_total = 1e-30;
-    if (G_total > 1.0)
-        G_total = 1.0 / G_total;   // convert very large coupling to attenuation
+    if (G_total > 1.0)   G_total = 1.0;
 
     const double PL_dB = -10.0 * std::log10(G_total);
 
@@ -147,7 +146,6 @@ double UwMiCouplingPropagation::getGain(Packet* p)
                   << " (" << 10.0*log10(G_total) << " dB)"
                   << std::endl;
     }
-    ph->Pr = -PL_dB;
     return G_total;
 
 }

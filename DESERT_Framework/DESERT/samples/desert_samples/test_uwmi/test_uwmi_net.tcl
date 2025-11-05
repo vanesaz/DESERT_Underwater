@@ -60,7 +60,7 @@ if {$opt(trace_files)} {
 set opt(start)    0
 set opt(stop)     30
 set opt(distance) 3
-set opt(txpower) 0.0001
+set opt(txpower)  0.0001
 set opt(period)   1.2
 set opt(pktsize)  128
 
@@ -105,7 +105,7 @@ $mask setFreq 200000    ;# 200 kHz
 $mask setBandwidth 5000 ;# 5 kHz
 
 # ===============================
-# Create PHYs 
+# Create PHYs
 # ===============================
 set miPhy1 [new Module/UW/MI/PHY/Custom]
 set miPhy2 [new Module/UW/MI/PHY/Custom]
@@ -139,8 +139,8 @@ $miPhy1 set f0_ 200000
 $miPhy2 set f0_ 200000
 $miPhy1 set Q_ 50
 $miPhy2 set Q_ 50
-$miPhy1 set NF_dB_ 80.0
-$miPhy2 set NF_dB_ 80.0
+$miPhy1 set NF_dB_ 8.0
+$miPhy2 set NF_dB_ 8.0
 $miPhy1 set Tnoise_K_ 290
 $miPhy2 set Tnoise_K_ 290
 
@@ -276,7 +276,7 @@ $miProp set ar_ 0.2
 $miProp set Rt_ 1.0
 $miProp set Rr_ 1.0
 $miProp set kappa_ 1.0
-$miProp set f_ 200000 
+$miProp set f_ 200000
 $miProp set use_cond_loss_ 1    ;# <-- set once here, do NOT override later
 $miProp set sigma_ $opt(sigma)
 $miProp set debug_ 1
@@ -299,11 +299,9 @@ puts "Bitrate: [$miPhy1 set Rb_] bps"
 puts "(Propagation getGain() will be computed dynamically during packet reception)"
 puts "----------------------------------\n"
 
-
 puts "PHY1: TxPower=[ $miPhy1 set TxPower_ ] dBm, Rb=[ $miPhy1 set Rb_ ] bps, B=[ $miPhy1 set B_ ] Hz, f0=[ $miPhy1 set f0_ ] Hz"
 puts "Mask: f=[ $mask getFreq ] Hz, BW=[ $mask getBandwidth ] Hz"
 puts "PROP: f=[ $miProp set f_ ] Hz, Nt=[ $miProp set Nt_ ], Nr=[ $miProp set Nr_ ]"
-
 
 # ================================================================
 #   UwMI One-Way Link Validation Test
@@ -330,7 +328,7 @@ $app2 set debug_ 1
 # -------------------------------
 $ns at 5.0 "$app1 start"
 $ns at 5.1 "puts \"Running one-way MI link test: Node1 → Node2\""
-$ns at 5.2 "$app1 sendPkt" ;# kick off first transmission
+# $ns at 5.2 "$app1 sendPkt" ;# kick off first transmission (optional)
 
 # Node2 acts purely as passive receiver (no start)
 # $app2 is not started (no reverse traffic)
@@ -387,12 +385,12 @@ puts "PHY2 debug = [$miPhy2 set mi_debug_]"
 puts "---- Initialization complete, starting one-way traffic ----"
 puts "App1 (TX) -> Addr [$app1 set destAddr_] Port [$app1 set destPort_]"
 puts "App2 (RX) -> Addr [$app2 set destAddr_] Port [$app2 set destPort_]"
-
 puts "Loaded PHY library path: [info sharedlib]"
 
 # ================================================================
 #   Results collection and end procedure
 # ================================================================
+
 proc finish {} {
     global ns opt app1 app2
 
@@ -409,8 +407,14 @@ proc finish {} {
     puts "Packet Error Rate: $per"
     puts "--------------------------------------------------------"
 
+    # Ensure output directory exists
+    set outdir "results"
+    if {![file isdirectory $outdir]} {
+        file mkdir $outdir
+    }
+
     # Save summary to files
-    set resultFile "uwmi_results_summary_${opt(distance)}m.csv"
+    set resultFile "$outdir/uwmi_results_summary_${opt(distance)}m.csv"
     set fd [open $resultFile a]
     puts $fd "distance=$opt(distance),sent=$sent,rcv=$rcv,per=$per,sigma=$opt(sigma),period=$opt(period),stop=$opt(stop)"
     close $fd
@@ -433,7 +437,7 @@ proc finish {} {
 
 # Schedule end
 $ns at $opt(stop) "$app1 stop"
-$ns at [expr {$opt(stop) + 0.5}] "finish"
+$ns at [expr {$opt(stop) + 3.0}] "finish"
 $ns at [expr {$opt(stop) + 5.0}] "$ns halt"
 
 # -------------------------------

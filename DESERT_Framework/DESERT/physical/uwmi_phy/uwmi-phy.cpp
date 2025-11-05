@@ -13,6 +13,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 
 int UwMiPhy::mi_modid = 0;
 
@@ -301,11 +302,12 @@ double UwMiPhy::perFromBer_(double ber, int bits) const
 
 double UwMiPhy::computePER_(double Prx_W, hdr_MPhy *ph, int bits)
 {
-    const double Beff = effectiveBandwidthHz_(ph);
-    const double N_W = thermalNoise_W_(Beff);
+    const double Beff = std::max(1.0, effectiveBandwidthHz_(ph));  // avoid 0 Hz
+    const double N_W = std::max(1e-24, thermalNoise_W_(Beff));
     const double SNR_lin = std::min(1e12, std::max(1e-6, Prx_W / N_W));
 
     const double Rb = std::max(1.0, Rb_);
+    const double Flin = std::pow(10.0, NF_dB_ / 10.0);
     const double ebn0_lin = SNR_lin * (Beff / Rb) / pow(10.0, NoiseMargin_dB_/10.0);
     const double BER = berBpskFromEbN0_(ebn0_lin);
     const double PER = perFromBer_(BER, bits);
@@ -315,7 +317,24 @@ double UwMiPhy::computePER_(double Prx_W, hdr_MPhy *ph, int bits)
         std::cout << NOW 
                   << " UwMiPhy::computePER_(): "
                   << "Beff=" << Beff << " Hz, "
+                  << "Bmask=" << B_ << " Hz, "
                   << "N=" << N_W << " W, "
+                  << "SNR=" << 10*log10(SNR_lin) << " dB, "
+                  << "Eb/N0=" << ebn0_dB << " dB, "
+                  << "BER=" << BER << ", "
+                  << "PER=" << PER << std::endl;
+    }
+    if (debug_) {
+        const double ebn0_dB = 10.0 * log10(ebn0_lin + 1e-30);
+        std::cout << NOW 
+                  << " UwMiPhy::computePER_(): "
+                  << "Beff=" << Beff << " Hz, "
+                  << "Bmask=" << B_ << " Hz, "
+                  << "Q=" << Q_ << ", f0=" << f0_ << " Hz, "
+                  << "NF=" << NF_dB_ << " dB, "
+                  << "T=" << Tnoise_K_ << " K, "
+                  << "N=" << N_W << " W, "
+                  << "Prx=" << Prx_W << " W, "
                   << "SNR=" << 10*log10(SNR_lin) << " dB, "
                   << "Eb/N0=" << ebn0_dB << " dB, "
                   << "BER=" << BER << ", "
