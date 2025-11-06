@@ -66,12 +66,14 @@ set opt(pktsize)  128
 
 set opt(seed) 12345
 
-# Allow overrides from command line (-distance, -sigma, -period, -stop)
+# Allow overrides from command line ( -uw2aw, -distance, -sigma, -period, -stop)
+set opt(uw2aw) 0   ;# 0 = UW->UW (both underwater), 1 = UW->AW (Rx above water)
 set opt(sigma) 4.0     ;# 4 S/m = saltwater by default
 for {set i 0} {$i < $argc} {incr i} {
     set flag [lindex $argv $i]
     set val  [lindex $argv [expr {$i+1}]]
     switch -- $flag {
+        "-uw2aw"    { set opt(uw2aw) $val }
         "-distance" { set opt(distance) $val }
         "-sigma"    { set opt(sigma)    $val }
         "-period"   { set opt(period)   $val }
@@ -79,6 +81,7 @@ for {set i 0} {$i < $argc} {incr i} {
         "-seed"     { set opt(seed)     $val }
     }
 }
+puts "ARGS: distance=$opt(distance), sigma=$opt(sigma), uw2aw=$opt(uw2aw)"
 
 # set ns RNG
 if {[info commands ns-random] ne ""} {
@@ -261,7 +264,11 @@ $position1 setY_ 0
 $position1 setZ_ -5
 $position2 setX_ $opt(distance)
 $position2 setY_ 0
-$position2 setZ_ -5
+if {$opt(uw2aw)} {
+    $position2 setZ_ 1   ;# Rx above water (UW→AW)
+} else {
+    $position2 setZ_ -5  ;# both underwater (UW→UW)
+}
 
 puts "DEBUG: Node1 X=[ $position1 getX_ ], Node2 X=[ $position2 getX_ ], distance=$opt(distance)"
 
@@ -276,10 +283,14 @@ $miProp set ar_ 0.2
 $miProp set Rt_ 1.0
 $miProp set Rr_ 1.0
 $miProp set kappa_ 1.0
-$miProp set f_ 200000
 $miProp set use_cond_loss_ 1    ;# <-- set once here, do NOT override later
 $miProp set sigma_ $opt(sigma)
 $miProp set debug_ 1
+
+# enable the UW→AW splitter in the propagation
+$miProp set use_two_layer_ 1
+
+$miProp setChannel $channel
 
 # Attach positions now that they exist
 $miProp addPosition $position1
@@ -301,7 +312,7 @@ puts "----------------------------------\n"
 
 puts "PHY1: TxPower=[ $miPhy1 set TxPower_ ] dBm, Rb=[ $miPhy1 set Rb_ ] bps, B=[ $miPhy1 set B_ ] Hz, f0=[ $miPhy1 set f0_ ] Hz"
 puts "Mask: f=[ $mask getFreq ] Hz, BW=[ $mask getBandwidth ] Hz"
-puts "PROP: f=[ $miProp set f_ ] Hz, Nt=[ $miProp set Nt_ ], Nr=[ $miProp set Nr_ ]"
+puts "PROP:  Nt=[ $miProp set Nt_ ], Nr=[ $miProp set Nr_ ]"
 
 # ================================================================
 #   UwMI One-Way Link Validation Test

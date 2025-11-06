@@ -33,6 +33,7 @@ protected:
     double Rr_;      // Rx resistance [Ohm]
     double kappa_;   // orientation factor [0..1]
     double mu_r_;    // relative permeability (~1 in water)
+    int  use_two_layer_;   // 0/1; 
 
     // Medium conductive loss
     int    use_cond_loss_; // 0/1
@@ -47,6 +48,8 @@ protected:
     double distanceUnderwater_(Position* sp, Position* rp);
     double mutualInductance_(double d) const;           // Henry
     double conductiveFactor_(double f, double d) const; // attenuation [0..1]
+    struct TwoLayerSeg { double d_total; double d_water; };
+    TwoLayerSeg splitUnderwaterAir_(Position* sp, Position* rp) const;
 
     // Store positions passed from Tcl
     std::vector<Position*> positionList_;

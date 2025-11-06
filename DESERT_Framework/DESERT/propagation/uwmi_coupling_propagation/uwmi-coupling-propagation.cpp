@@ -1,5 +1,6 @@
 #include "uwmi-coupling-propagation.h"
 #include <node-core.h>
+#include <cmath>
 
 static class UwMiCouplingPropagationClass : public TclClass {
 public:
@@ -13,7 +14,8 @@ UwMiCouplingPropagation::UwMiCouplingPropagation()
   kappa_(1.0), mu_r_(1.0),
   use_cond_loss_(1), sigma_(4.0),
   debug_(0),
-  channel_(nullptr)   // ✅ initialize to null
+  use_two_layer_(1),
+  channel_(nullptr) // ✅ initialize to null
 {
     bind("Nt_", &Nt_);
     bind("Nr_", &Nr_);
@@ -26,6 +28,7 @@ UwMiCouplingPropagation::UwMiCouplingPropagation()
     bind("use_cond_loss_", &use_cond_loss_);
     bind("sigma_", &sigma_);
     bind("debug_", &debug_);
+    bind("use_two_layer_", &use_two_layer_);
 }
 
 int UwMiCouplingPropagation::command(int argc, const char*const* argv)
@@ -92,60 +95,101 @@ double UwMiCouplingPropagation::conductiveFactor_(double f, double d) const
     return (L < 1e-12) ? 1e-12 : L;
 }
 
+
+UwMiCouplingPropagation::TwoLayerSeg
+UwMiCouplingPropagation::splitUnderwaterAir_(Position* sp, Position* rp) const
+{
+    const double x1=sp->getX(), y1=sp->getY(), z1=sp->getZ();
+    const double x2=rp->getX(), y2=rp->getY(), z2=rp->getZ();
+
+    const double dx=x2-x1, dy=y2-y1, dz=z2-z1;
+    const double d_total = std::sqrt(dx*dx + dy*dy + dz*dz);
+    if (d_total <= 0.0) return {0.0, 0.0};
+
+    // both below water
+    if (z1 < 0.0 && z2 < 0.0) return {d_total, d_total};
+    // both in air
+    if (z1 >= 0.0 && z2 >= 0.0) return {d_total, 0.0};
+
+     // Crossing case: guard dz to avoid division by zero
+    if (std::fabs(dz) < 1e-12) {
+        // Practically a horizontal segment at the interface; treat as no crossing
+        // Decide water length by the side you are on (use z1)
+        const double d_water = (z1 < 0.0) ? d_total : 0.0;
+        return {d_total, d_water};
+    }
+
+    // crosses the interface at z=0: parametric line P(t)=P1 + t*(P2-P1)
+    const double t0 = (0.0 - z1) / dz; // dz != 0 here
+    
+    // distance from underwater endpoint to interface
+    double d_water = 0.0;
+    if (z1 < 0.0 && z2 >= 0.0) {
+        // water from t=0 to t=t0
+        const double wx = dx * t0, wy = dy * t0, wz = dz * t0;
+        d_water = std::sqrt(wx*wx + wy*wy + wz*wz);
+
+    } else {
+        // z1 >= 0, z2 < 0 : water from t=t0 to t=1
+        const double wx = dx * (1.0 - t0), wy = dy * (1.0 - t0), wz = dz * (1.0 - t0);
+        d_water = std::sqrt(wx*wx + wy*wy + wz*wz);
+    }
+    return {d_total, d_water};
+}
+
+
 double UwMiCouplingPropagation::getGain(Packet* p)
 {
     if (debug_) std::cout << NOW << " UwMiCouplingPropagation::getGain() CALLED" << std::endl;
     hdr_MPhy *ph = HDR_MPHY(p);
     double f = ph->srcSpectralMask->getFreq();
 
-    Position *sp = nullptr;
-    Position *rp = nullptr;
-
-    if (positionList_.size() >= 2) {
-        sp = positionList_[0];
-        rp = positionList_[1];
-    } else {
-        sp = ph->srcPosition;
-        rp = ph->dstPosition;
-    }
+    Position* sp = (positionList_.size() >= 2) ? positionList_[0] : ph->srcPosition;
+    Position* rp = (positionList_.size() >= 2) ? positionList_[1] : ph->dstPosition;
 
     if (!sp || !rp) {
-        if (debug_)
-            std::cerr << "UwMiCouplingPropagation: missing positions!" << std::endl;
-        return 1e-30; // huge path loss if no positions
+        if (debug_) std::cerr << "UwMiCouplingPropagation: missing positions!\n";
+        return 1e-30;
     }
 
-    const double d = distanceUnderwater_(sp, rp);
+    TwoLayerSeg seg;
+    if (use_two_layer_) {
+        seg = splitUnderwaterAir_(sp, rp);
+    } else {
+        // fallback: old behavior (treat entire link as underwater)
+        const double dx = rp->getX() - sp->getX();
+        const double dy = rp->getY() - sp->getY();
+        const double dz = rp->getZ() - sp->getZ();
+        const double d  = std::sqrt(dx*dx + dy*dy + dz*dz);
+        seg = { d, d };
+    }
+
+    const double d_total = seg.d_total;
+    if (d_total <= 0.0) return 0.0;
+
+     // --- near-field MI coupling uses TOTAL distance ---
+    const double M  = mutualInductance_(d_total);       // H
+    const double w  = 2.0 * M_PI * f;
+    const double Gc = (kappa_ * kappa_) * (w*w * M*M) / (4.0 * Rt_ * Rr_);
+
+    // --- conductive loss ONLY over the underwater segment ---
+    const double Lm = (use_cond_loss_) ? conductiveFactor_(f, seg.d_water) : 1.0;
+
+    // total linear gain
+    double G = Gc * Lm;
+    if (G < 1e-30) G = 1e-30;
+    if (G > 1.0)   G = 1.0;
 
     if (debug_) {
-        std::cout << NOW << " UwMiCouplingPropagation: d=" << d
-                  << " f=" << f << " Hz" << std::endl;
+        std::cout << NOW
+                  << " UwMiCouplingPropagation[UW2AW]: d_tot=" << d_total
+                  << " d_water=" << seg.d_water
+                  << " M=" << M
+                  << " Gc=" << Gc
+                  << " Lm=" << Lm
+                  << " PL=" << (-10.0*std::log10(G)) << " dB\n";
     }
+    return G;
 
-    if (d <= 0.0) return 0.0;
-
-    // --- Core coupling + medium losses ---
-    const double M = mutualInductance_(d);
-    const double w = 2.0 * M_PI * f;
-    const double G_coupling = (kappa_ * kappa_) * (w * w * M * M) / (4.0 * Rt_ * Rr_);
-    const double L_medium = conductiveFactor_(f, d);
-
-    double G_total = G_coupling * L_medium;
-    if (G_total < 1e-30)
-        G_total = 1e-30;
-    if (G_total > 1.0)   G_total = 1.0;
-
-    const double PL_dB = -10.0 * std::log10(G_total);
-
-    if (debug_) {
-        std::cout << NOW << " UwMiCouplingPropagation: M=" << M
-                  << " Gc=" << G_coupling
-                  << " Lmed=" << L_medium
-                  << " PLtot=" << PL_dB << " dB"
-                  << " G_total=" << G_total 
-                  << " (" << 10.0*log10(G_total) << " dB)"
-                  << std::endl;
-    }
-    return G_total;
 
 }
