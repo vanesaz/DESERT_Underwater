@@ -25,6 +25,11 @@ public:
 
 protected:
     // Coil/transceiver params (bind-able from Tcl)
+    int    Nt_coils_;   // number of physical coils at Tx (>=1)
+    int    Nr_coils_;   // number of physical coils at Rx (>=1)
+    double st_;         // spacing between Tx coils [m] (center-to-center along axis)
+    double sr_;         // spacing between Rx coils [m]
+    int    auto_scale_R_; // 0/1: if 1, Rt_/Rr_ are per-coil values (series connect)
     double Nt_;      // turns (Tx)
     double Nr_;      // turns (Rx)
     double at_;      // Tx coil radius [m]
@@ -46,7 +51,9 @@ protected:
 
     // Helpers
     double distanceUnderwater_(Position* sp, Position* rp);
-    double mutualInductance_(double d) const;           // Henry
+    double mutualInductance_onepair_(double d) const;
+    double sumMutualInductance_(double d_center) const;
+    void   coilOffsets_(int N, double s, std::vector<double>& out) const;
     double conductiveFactor_(double f, double d) const; // attenuation [0..1]
     struct TwoLayerSeg { double d_total; double d_water; };
     TwoLayerSeg splitUnderwaterAir_(Position* sp, Position* rp) const;

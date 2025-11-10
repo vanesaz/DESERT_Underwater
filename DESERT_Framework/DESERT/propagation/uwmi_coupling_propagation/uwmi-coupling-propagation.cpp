@@ -1,6 +1,8 @@
 #include "uwmi-coupling-propagation.h"
 #include <node-core.h>
 #include <cmath>
+#include <algorithm>
+#include <strings.h>
 
 static class UwMiCouplingPropagationClass : public TclClass {
 public:
@@ -9,7 +11,8 @@ public:
 } class_UwMiCouplingPropagation;
 
 UwMiCouplingPropagation::UwMiCouplingPropagation()
-: Nt_(20), Nr_(20), at_(0.10), ar_(0.10),
+: Nt_coils_(1), Nr_coils_(1), st_(0.0), sr_(0.0), auto_scale_R_(0),
+  Nt_(20), Nr_(20), at_(0.10), ar_(0.10),
   Rt_(2.0), Rr_(2.0),
   kappa_(1.0), mu_r_(1.0),
   use_cond_loss_(1), sigma_(4.0),
@@ -17,6 +20,11 @@ UwMiCouplingPropagation::UwMiCouplingPropagation()
   use_two_layer_(1),
   channel_(nullptr) // ✅ initialize to null
 {
+    bind("Nt_coils_", &Nt_coils_);
+    bind("Nr_coils_", &Nr_coils_);
+    bind("st_", &st_);
+    bind("sr_", &sr_);
+    bind("auto_scale_R_", &auto_scale_R_);
     bind("Nt_", &Nt_);
     bind("Nr_", &Nr_);
     bind("at_", &at_);
@@ -77,12 +85,38 @@ double UwMiCouplingPropagation::distanceUnderwater_(Position* sp, Position* rp)
     return sqrt(dx*dx + dy*dy + dz*dz);
 }
 
-double UwMiCouplingPropagation::mutualInductance_(double d) const
+double UwMiCouplingPropagation::mutualInductance_onepair_(double d) const
 {
     const double mu = MU_0 * mu_r_;
     const double At = M_PI * at_ * at_;
     const double Ar = M_PI * ar_ * ar_;
     return (mu * Nt_ * Nr_ * At * Ar) / (2.0 * M_PI * std::pow(d, 3.0));
+}
+
+void UwMiCouplingPropagation::coilOffsets_(int N, double s, std::vector<double>& out) const {
+    out.clear();
+    if (N <= 0) return;
+    if (N == 1) { out.push_back(0.0); return; }
+    // center the stack around 0: offsets = (i - (N-1)/2)*s
+    const double c = 0.5 * (N - 1);
+    out.reserve(N);
+    for (int i = 0; i < N; ++i) out.push_back((i - c) * s);
+}
+
+double UwMiCouplingPropagation::sumMutualInductance_(double d_center) const {
+    // Coaxial, co-oriented stacks along the line joining node centers.
+    std::vector<double> tOff, rOff;
+    coilOffsets_(std::max(1, Nt_coils_), st_, tOff);
+    coilOffsets_(std::max(1, Nr_coils_), sr_, rOff);
+    double Msum = 0.0;
+    for (double dt : tOff) {
+        for (double dr : rOff) {
+            const double dij = std::fabs(d_center + dr - dt);
+            const double d_safe = (dij > 1e-9 ? dij : 1e-9);
+            Msum += mutualInductance_onepair_(d_safe);
+        }
+    }
+    return Msum;
 }
 
 double UwMiCouplingPropagation::conductiveFactor_(double f, double d) const
@@ -167,10 +201,12 @@ double UwMiCouplingPropagation::getGain(Packet* p)
     const double d_total = seg.d_total;
     if (d_total <= 0.0) return 0.0;
 
-     // --- near-field MI coupling uses TOTAL distance ---
-    const double M  = mutualInductance_(d_total);       // H
+    // Pair-summed mutual inductance for arrays
+    const double M  = sumMutualInductance_(d_total);
     const double w  = 2.0 * M_PI * f;
-    const double Gc = (kappa_ * kappa_) * (w*w * M*M) / (4.0 * Rt_ * Rr_);
+    const double Rt_eff = (auto_scale_R_ ? std::max(1, Nt_coils_) * Rt_ : Rt_);
+    const double Rr_eff = (auto_scale_R_ ? std::max(1, Nr_coils_) * Rr_ : Rr_);
+    const double Gc = (kappa_ * kappa_) * (w*w * M*M) / (4.0 * Rt_eff * Rr_eff);  
 
     // --- conductive loss ONLY over the underwater segment ---
     const double Lm = (use_cond_loss_) ? conductiveFactor_(f, seg.d_water) : 1.0;
@@ -182,12 +218,20 @@ double UwMiCouplingPropagation::getGain(Packet* p)
 
     if (debug_) {
         std::cout << NOW
-                  << " UwMiCouplingPropagation[UW2AW]: d_tot=" << d_total
-                  << " d_water=" << seg.d_water
-                  << " M=" << M
-                  << " Gc=" << Gc
-                  << " Lm=" << Lm
-                  << " PL=" << (-10.0*std::log10(G)) << " dB\n";
+            << " UwMiCouplingPropagation[UW2AW]:"
+            << " d_tot="    << d_total
+            << " d_water="  << seg.d_water
+            << " Nt_coils=" << Nt_coils_
+            << " Nr_coils=" << Nr_coils_
+            << " st="       << st_
+            << " sr="       << sr_
+            << " Rt_eff="   << Rt_eff
+            << " Rr_eff="   << Rr_eff
+            << " Msum="     << M
+            << " Gc="       << Gc
+            << " Lm="       << Lm
+            << " PL="       << (-10.0*std::log10(G)) << " dB"
+            << std::endl;               
     }
     return G;
 
