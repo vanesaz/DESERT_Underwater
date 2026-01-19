@@ -96,6 +96,7 @@ SUBDIRS = m4 \
     propagation/uwoptical_propagation \
     propagation/uwem_propagation \
     propagation/uwmi_propagation \
+    propagation/uwmi_coupling_propagation \
     channel/uwoptical_channel \
     channel/uwem_channel \
     statistics/uwstats_utilities \
