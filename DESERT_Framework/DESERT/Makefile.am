@@ -35,50 +35,15 @@ ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST = autogen.sh 
 
 SUBDIRS = m4 \
-    interference/uwinterference \
-    statistics/uwstats_utilities \
-    utility/msg-display \
-    propagation/uwem_propagation \
-    propagation/uwoptical_propagation \
-    mobility/uwdriftposition \
-    mobility/uwgmposition \
-    mobility/uwrandomlib \
-    mobility/uwsmposition \
-    physical/uwphy_clmsgs \
-    physical/uwphysical \
-    physical/uwhmmphysical \
-    physical/uwphysicalnoise \
-    physical/uwgainfromdb \
-    physical/uwphysicaldb\
-    physical/uwphysicalrogersmodel\
-    physical/uwphysicalfromdb\
-    physical/uw-al \
-    physical/uw-al/packer_common \
-    physical/uw-al/packer_mac \
-    physical/uwmodem \
-    physical/uwconnector \
-    physical/uwmodemcsa \
-    physical/uwevologicss2cmodem \
-    physical/uwmphypatch \
-    physical/uwhermesphy \
-    physical/uwofdmphy \
-    interference/uwinterferenceofdm \
-    physical/uwahoi_phy \
-    physical/uwahoimodem \
-    physical/uwmodamodem \
-    physical/uwem_phy \
-    physical/uwem_antenna \
-    physical/uwoptical_phy \
-    physical/uwopticalbeampattern \
-    network/uwip \
-    transport/uwudp \
     application/uwcbr \
     application/uwvbr \
     application/uwApplication \
+    transport/uwudp \
     network/uwstaticrouting \
     network/uwflooding \
     network/uwsun \
     network/uwicrp \
+    network/uwip \
     network/uwPositionBasedRouting \
     data_link/uwmll \
     data_link/uwmmac_clmsgs \
@@ -92,17 +57,52 @@ SUBDIRS = m4 \
     data_link/uwsr \
     data_link/uw-t-lohi \
     data_link/uwUFetch \
-    data_link/uw-aloha-q \
-    data_link/uw-aloha-q-sync \
     data_link/uw-csma-aloha-trigger \
     data_link/uwtdma \
     data_link/uwtdma-frame \
     data_link/uwtokenbus \
-    data_link/uwjammer \
-    data_link/uw-cs-burst \
-    channel/uwem_channel \
+    physical/uwphysical \
+    physical/uwhmmphysical \
+    physical/uwgainfromdb \
+    physical/uwphysicaldb\
+    physical/uwphysicalrogersmodel\
+    physical/uwphysicalfromdb\
+    physical/uwmodem \
+    physical/uwmodemcsa \
+    physical/uwconnector \
+    physical/uwevologicss2cmodem \
+    physical/uwmphypatch \
+    physical/uwhermesphy \
+    physical/uwofdmphy \
+    physical/uwahoi_phy \
+    physical/uwahoimodem \
+    physical/uwmodamodem \
+    physical/uwoptical_phy \
+    physical/uwopticalbeampattern \
+    physical/uw-al \
+    physical/uw-al/packer_common \
+    physical/uw-al/packer_mac \
+    physical/uwphy_clmsgs \
+    physical/uwem_phy \
+    physical/uwmi_phy \
+    physical/uwem_antenna \
+    utility/msg-display \
+    mobility/uwdriftposition \
+    mobility/uwgmposition \
+    mobility/uwrandomlib \
+    mobility/uwsmposition \
+    interference/uwinterference \
+    interference/uwinterferenceofdm \
+    propagation/uwoptical_propagation \
+    propagation/uwem_propagation \
+    propagation/uwmi_propagation \
+    propagation/uwmi_coupling_propagation \
     channel/uwoptical_channel \
+    channel/uwem_channel \
+    statistics/uwstats_utilities \
     ranging/uwranging_tokenbus \
     ranging/uwranging_tdma \
     ranging/uwtap \
-    ranging/uwranging_tdoa 
+    ranging/uwranging_tdoa \
+    data_link/uwjammer \
+    physical/uwphysicalnoise
