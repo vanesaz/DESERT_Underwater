@@ -1,25 +1,25 @@
 // ============================================================
-// UwMiPhy PER Model:
-//   - AWGN-based analytical PER computation for BPSK
-//   - Suitable for theoretical MI link characterization
-//   - Parameters tuned via NF_dB_, TxPower_, Rb_, and B_
+// UwMiPhy PER Model (AWGN-based analytical PER for BPSK)
 // ============================================================
 
-
 #include "uwmi-phy.h"
+
+#include <tclcl.h>
 #include <mphy.h>
 #include <mspectralmask.h>
 #include <rect_spectral_mask.h>
+
 #include <iostream>
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <strings.h> // strcasecmp
 
 int UwMiPhy::mi_modid = 0;
 
 static class UwMiPhyClass : public TclClass {
 public:
-    UwMiPhyClass() : TclClass("Module/UW/MI/PHY/Custom") {}
+    UwMiPhyClass() : TclClass("Module/UW/MI/PHY") {}
     TclObject* create(int, const char* const*) { return (new UwMiPhy); }
 } class_UwMiPhyClass;
 
@@ -38,8 +38,6 @@ UwMiPhy::UwMiPhy()
       Tnoise_K_(293.0),
       NoiseMargin_dB_(0.0)
 {
-    std::cout << "UwMiPhy constructor: debug_ initial=" << debug_ << std::endl;
-
     static bool registered = false;
     if (!registered) {
         mi_modid = MPhy::registerModulationType(MAGIND_MODULATION_TYPE);
@@ -49,23 +47,31 @@ UwMiPhy::UwMiPhy()
     bind("TxPower_", &TxPower_);
     bind("Rb_", &Rb_);
     bind("B_", &B_);
+
     bind("AcquisitionThreshold_dB_", &AcquisitionThreshold_dB_);
     bind("use_auto_rx_power_gate_",  &use_auto_rx_power_gate_);
     bind("rxPowerThreshold_dBm_",    &rxPowerThreshold_dBm_);
-    bind("mi_debug_", &debug_);
+
+    bind("rxPowerThreshold_",        &rxPowerThreshold_dBm_);
+
     bind("NF_dB_", &NF_dB_);
     bind("use_resonance_", &use_resonance_);
     bind("f0_", &f0_);
     bind("Q_", &Q_);
+
     bind("Beff_Hz_", &Beff_Hz_);
     bind("Tnoise_K_", &Tnoise_K_);
-    bind("NoiseMargin_dB_", &NoiseMargin_dB_);
 
+    bind("T_", &Tnoise_K_);
+
+    // debug aliases 
+    bind("debug_", &debug_);
+    bind("mi_debug_", &debug_);
+
+    bind("NoiseMargin_dB_", &NoiseMargin_dB_);
 }
 
-/* ============================================================
- *                      TRANSMIT SIDE
- * ============================================================ */
+/* ===================== TRANSMIT SIDE ===================== */
 
 void UwMiPhy::startTx(Packet* p)
 {
@@ -77,10 +83,8 @@ void UwMiPhy::startTx(Packet* p)
         return;
     }
 
-    // Set MI modulation id
     ph->modulationType = mi_modid;
 
-    // Ensure spectral mask exists
     if (!spectralmask_) {
         spectralmask_ = new RectSpectralMask();
         spectralmask_->setFreq(f0_);
@@ -89,16 +93,11 @@ void UwMiPhy::startTx(Packet* p)
     ph->srcSpectralMask = spectralmask_;
     ph->dstSpectralMask = spectralmask_;
 
-
-
-    // (TxPower_ comes from Tcl in W)
     double tx_watt = (TxPower_ > 0.0 && std::isfinite(TxPower_)) ? TxPower_ : 1e-9;
     ph->Pt = tx_watt;
 
-    // Ensure txtime() is set
     if (ch->txtime() <= 0.0) ch->txtime() = getTxDuration(p);
 
-    // Make sure MPhy duration is > 0 (framework asserts on this)
     ph->duration = ch->txtime();
     if (ph->duration <= 0.0) ph->duration = std::max(1e-9, getTxDuration(p));
 
@@ -110,24 +109,17 @@ void UwMiPhy::startTx(Packet* p)
                   << " f0=" << f0_ << " Hz\n";
     }
 
-
     MPhy_Bpsk::startTx(p);
 }
 
-/* ============================================================
- *                        RX SIDE (framework-driven timing)
- *   Channel/framework calls startRx() when a frame starts,
- *   and endRx() exactly after ch->txtime().
- * ============================================================ */
+/* ===================== RX SIDE ===================== */
 
 void UwMiPhy::startRx(Packet* p)
 {
-    // Mirror base behavior: accept only if idle and not TX pending
     if ((PktRx == 0) && (txPending == false)) {
         hdr_MPhy* ph = HDR_MPHY(p);
         hdr_cmn*  ch = HDR_CMN(p);
 
-        // Guarantee spectral mask and Pt/Pr fields are sane for logging/math
         if (!spectralmask_) {
             spectralmask_ = new RectSpectralMask();
             spectralmask_->setFreq(f0_);
@@ -138,14 +130,12 @@ void UwMiPhy::startRx(Packet* p)
             if (!ph->srcSpectralMask) ph->srcSpectralMask = spectralmask_;
             if (!ph->dstSpectralMask) ph->dstSpectralMask = spectralmask_;
             if (!(ph->Pt > 0.0)) {
-              double tx_watt = (TxPower_ > 0.0 && std::isfinite(TxPower_)) ? TxPower_ : 1e-9;
-              ph->Pt = tx_watt;
+                double tx_watt = (TxPower_ > 0.0 && std::isfinite(TxPower_)) ? TxPower_ : 1e-9;
+                ph->Pt = tx_watt;
             }
 
-
-            // Fill Pr and Pn for acquisition decision/readout
-            const double Prx_W = getRxPower(p);     // also sets ph->Pr
-            const double N_W   = getNoisePower(p);  // thermal noise incl. NF
+            const double Prx_W = getRxPower(p);
+            const double N_W   = getNoisePower(p);
             ph->Pn = N_W;
 
             const double snr_dB  = 10.0*log10(std::max(Prx_W/N_W, 1e-12));
@@ -156,37 +146,31 @@ void UwMiPhy::startRx(Packet* p)
 
             double Pthr_dBm = rxPowerThreshold_dBm_;
             if (use_auto_rx_power_gate_) {
-              Pthr_dBm = N_dBm + AcquisitionThreshold_dB_;
+                Pthr_dBm = N_dBm + AcquisitionThreshold_dB_;
             }
 
-
             if (debug_) {
-              std::cout << NOW << " UwMiPhy::startRx(): "
-                        << "snr_dB=" << snr_dB
-                        << " thr_dB=" << thr_dB
-                        << " Prx=" << Prx_dBm << " dBm"
-                        << " N="   << N_dBm   << " dBm"
-                        << " Pthr="<< Pthr_dBm << " dBm"
-                        << " end@" << (NOW + ch->txtime())
-                        << " size=" << ch->size() << std::endl;
+                std::cout << NOW << " UwMiPhy::startRx(): "
+                          << "snr_dB=" << snr_dB
+                          << " thr_dB=" << thr_dB
+                          << " Prx=" << Prx_dBm << " dBm"
+                          << " N="   << N_dBm   << " dBm"
+                          << " Pthr="<< Pthr_dBm << " dBm"
+                          << " end@" << (NOW + ch->txtime())
+                          << " size=" << ch->size() << std::endl;
             }
 
             if (snr_dB >= thr_dB && Prx_dBm >= Pthr_dBm) {
-              ph->modulationType = mi_modid;
-              PktRx = p;
-              Phy2MacStartRx(p);
+                ph->modulationType = mi_modid;
+                PktRx = p;
+                Phy2MacStartRx(p);
             }
-
             return;
         }
-
         return;
     }
-
     return;
 }
-
-
 
 void UwMiPhy::endRx(Packet *p)
 {
@@ -207,8 +191,6 @@ void UwMiPhy::endRx(Packet *p)
 
     int bits = std::max(0, ch->size() * 8);
 
-
-    // Compute PER with MI model (fills metrics/logs)
     double Prx_W = (ph && ph->Pr > 0.0) ? ph->Pr : getRxPower(p);
     double PER = computePER_(Prx_W, ph, bits);
     bool err = (RNG::defaultrng()->uniform_double() < PER);
@@ -220,16 +202,11 @@ void UwMiPhy::endRx(Packet *p)
                   << " -> " << (err ? "ERR" : "OK") << std::endl;
     }
 
-    // Hand upward (PHY does not discard on error; upper layers may)
     sendUp(p);
-
-    // Ready for next packet
     PktRx = 0;
 }
 
-/* ============================================================
- *                POWER / NOISE / PER HELPERS
- * ============================================================ */
+/* ================= POWER / NOISE / PER HELPERS ================= */
 
 double UwMiPhy::getRxPower(Packet *p)
 {
@@ -238,22 +215,20 @@ double UwMiPhy::getRxPower(Packet *p)
     double gain_lin = 1.0;
     if (propagation_) gain_lin = propagation_->getGain(p);
 
-    // Compute received power in W
     double tx_power_lin = (TxPower_ > 0.0 && std::isfinite(TxPower_)) ? TxPower_ : 1e-9;
     double Prx_W = tx_power_lin * gain_lin;
 
     if (ph) ph->Pr = Prx_W;
 
     if (debug_) {
-      std::cerr << NOW << " UwMiPhy::getRxPower(): "
-                << "gain=" << gain_lin
-                << " TxW=" << tx_power_lin << " W"
-                << " Prx=" << 10.0*log10(Prx_W*1000.0 + 1e-30) << " dBm\n";
+        std::cerr << NOW << " UwMiPhy::getRxPower(): "
+                  << "gain=" << gain_lin
+                  << " TxW=" << tx_power_lin << " W"
+                  << " Prx=" << 10.0*log10(Prx_W*1000.0 + 1e-30) << " dBm\n";
     }
 
     return Prx_W;
 }
-
 
 double UwMiPhy::effectiveBandwidthHz_(hdr_MPhy *ph) const
 {
@@ -308,7 +283,6 @@ double UwMiPhy::computePER_(double Prx_W, hdr_MPhy* ph, int bits)
     const double BER = berBpskFromEbN0_(ebn0_lin);
     const double PER = perFromBer_(BER, bits);
 
-    // Compact metrics line (parse-friendly)
     const double Prx_dBm = 10.0 * log10(Prx_W * 1000.0 + 1e-30);
     const double N_dBm   = 10.0 * log10(N_W   * 1000.0 + 1e-30);
     const double SNR_dB  = 10.0 * log10(SNR_lin + 1e-30);
@@ -335,9 +309,8 @@ double UwMiPhy::computePER_(double Prx_W, hdr_MPhy* ph, int bits)
     return PER;
 }
 
-/* ============================================================
- *                      BASICS/UTILS
- * ============================================================ */
+/* ===================== BASICS/UTILS ===================== */
+
 double UwMiPhy::getTxDuration(Packet* p)
 {
     hdr_cmn* ch = HDR_CMN(p);
@@ -353,9 +326,8 @@ double UwMiPhy::getNoisePower(Packet* p)
     return thermalNoise_W_(Beff);
 }
 
-/* ============================================================
- *                      TCL INTERFACE
- * ============================================================ */
+/* ===================== TCL INTERFACE ===================== */
+
 int UwMiPhy::command(int argc, const char* const* argv)
 {
     Tcl& tcl = Tcl::instance();

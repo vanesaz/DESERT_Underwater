@@ -3,14 +3,17 @@
 
 #include <mpropagation.h>
 #include <mphy.h>
-#include <iostream>
+
 #include <cmath>
 #include <vector>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #ifndef MU_0
 #define MU_0 (4.0e-7 * M_PI) // H/m
 #endif
-
 
 class UwElectroMagneticChannel;
 
@@ -25,28 +28,27 @@ public:
 
 protected:
     // Coil/transceiver params (bind-able from Tcl)
-    int    Nt_coils_;   // number of physical coils at Tx (>=1)
-    int    Nr_coils_;   // number of physical coils at Rx (>=1)
-    double st_;         // spacing between Tx coils [m] (center-to-center along axis)
-    double sr_;         // spacing between Rx coils [m]
-    int    auto_scale_R_; // 0/1: if 1, Rt_/Rr_ are per-coil values (series connect)
-    double Nt_;      // turns (Tx)
-    double Nr_;      // turns (Rx)
-    double at_;      // Tx coil radius [m]
-    double ar_;      // Rx coil radius [m]
-    double Rt_;      // Tx resistance [Ohm]
-    double Rr_;      // Rx resistance [Ohm]
-    double kappa_;   // orientation factor [0..1]
-    double mu_r_;    // relative permeability (~1 in water)
-    int  use_two_layer_;   // 0/1; 
+    int    Nt_coils_;       // number of physical coils at Tx (>=1)
+    int    Nr_coils_;       // number of physical coils at Rx (>=1)
+    double st_;             // spacing between Tx coils [m]
+    double sr_;             // spacing between Rx coils [m]
+    int    auto_scale_R_;   // 0/1: if 1, Rt_/Rr_ are per-coil series values
 
-    // Medium conductive loss
-    int    use_cond_loss_; // 0/1
-    double sigma_;         // conductivity [S/m]
+    double Nt_;             // turns (Tx)
+    double Nr_;             // turns (Rx)
+    double at_;             // Tx coil radius [m]
+    double ar_;             // Rx coil radius [m]
+    double Rt_;             // Tx resistance [Ohm]
+    double Rr_;             // Rx resistance [Ohm]
+    double kappa_;          // orientation factor [0..1]
+    double mu_r_;           // relative permeability (~1 in water)
 
-    int debug_;            // verbose mode
+    int    use_cond_loss_;  // 0/1
+    double sigma_;          // conductivity [S/m]
+    int    debug_;          // verbose mode
+    int    use_two_layer_;  // 0/1
 
-    // Linked EM channel
+    // Linked EM channel (optional; kept for future extensions)
     UwElectroMagneticChannel* channel_;
 
     // Helpers
@@ -54,7 +56,8 @@ protected:
     double mutualInductance_onepair_(double d) const;
     double sumMutualInductance_(double d_center) const;
     void   coilOffsets_(int N, double s, std::vector<double>& out) const;
-    double conductiveFactor_(double f, double d) const; // attenuation [0..1]
+    double conductiveFactor_(double f, double d) const;
+
     struct TwoLayerSeg { double d_total; double d_water; };
     TwoLayerSeg splitUnderwaterAir_(Position* sp, Position* rp) const;
 
